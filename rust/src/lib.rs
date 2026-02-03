@@ -11,6 +11,9 @@ pub mod syscall;
 pub mod ffi;
 pub mod graphics;
 pub mod dxvk;
+pub mod input;
+pub mod power;
+pub mod runtime;
 
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -47,32 +50,44 @@ impl EmulationEngine {
             cpu.set_instruction_pointer(entry_point);
         }
 
-        self.run()
+        Ok(())
     }
 
-    /// Main execution loop
-    fn run(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        loop {
-            {
-                let mut cpu = self.cpu.lock().unwrap();
-                let mut translator = self.translator.lock().unwrap();
-                
-                // Fetch current instruction
-                let instruction = cpu.fetch_instruction()?;
-                
-                // Translate x86 instruction to ARM if needed
-                let translated = translator.translate_instruction(instruction)?;
-                
-                // Execute translated instructions
-                for _arm_inst in translated {
-                    // In a real implementation, this would execute ARM instructions
-                    // For now, we'll simulate execution by updating CPU state
-                }
-            }
-            
-            // Handle thermal throttling if needed
-            self.check_thermal_state()?;
+    /// Executes a single instruction and returns step stats.
+    pub fn step(&mut self) -> Result<ExecutionStep, Box<dyn std::error::Error>> {
+        let instruction = {
+            let mut cpu = self.cpu.lock().unwrap();
+            cpu.fetch_instruction()?
+        };
+
+        let translated_len = {
+            let mut translator = self.translator.lock().unwrap();
+            let translated = translator.translate_instruction(instruction.clone())?;
+            translated.len()
+        };
+
+        {
+            let mut cpu = self.cpu.lock().unwrap();
+            cpu.execute_instruction(instruction)?;
         }
+
+        Ok(ExecutionStep { translated_len })
+    }
+
+    /// Executes up to the given instruction budget.
+    pub fn run_for(&mut self, instruction_budget: u32) -> Result<ExecutionStats, Box<dyn std::error::Error>> {
+        let mut executed = 0u32;
+        while executed < instruction_budget {
+            self.step()?;
+            executed += 1;
+        }
+
+        let ip = self.cpu.lock().unwrap().get_instruction_pointer();
+
+        Ok(ExecutionStats {
+            instructions_executed: executed as u64,
+            last_instruction_pointer: ip,
+        })
     }
 
     /// Checks thermal state and adjusts performance accordingly
@@ -80,6 +95,19 @@ impl EmulationEngine {
         // Implementation would interface with Android thermal management
         Ok(())
     }
+}
+
+/// Execution step statistics
+#[derive(Debug)]
+pub struct ExecutionStep {
+    pub translated_len: usize,
+}
+
+/// Execution statistics for a run
+#[derive(Debug)]
+pub struct ExecutionStats {
+    pub instructions_executed: u64,
+    pub last_instruction_pointer: u32,
 }
 
 #[cfg(test)]

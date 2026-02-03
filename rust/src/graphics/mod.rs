@@ -3,7 +3,6 @@
 //! Translates DirectX graphics calls to Vulkan for mobile rendering
 
 use std::collections::HashMap;
-use crate::memory::MemoryManager;
 
 /// DirectX to Vulkan graphics translator
 pub struct GraphicsTranslator {
@@ -32,7 +31,7 @@ pub struct VulkanInstance {
 }
 
 /// Vulkan physical device
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct VulkanPhysicalDevice {
     pub handle: u64,
     pub properties: PhysicalDeviceProperties,
@@ -41,7 +40,7 @@ pub struct VulkanPhysicalDevice {
 }
 
 /// Physical device properties
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PhysicalDeviceProperties {
     pub vendor_id: u32,
     pub device_id: u32,
@@ -52,7 +51,7 @@ pub struct PhysicalDeviceProperties {
 }
 
 /// Physical device memory properties
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PhysicalDeviceMemoryProperties {
     pub memory_types: Vec<MemoryType>,
     pub heap_count: u32,
@@ -60,21 +59,21 @@ pub struct PhysicalDeviceMemoryProperties {
 }
 
 /// Memory type properties
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MemoryType {
     pub heap_index: u32,
     pub property_flags: u32,
 }
 
 /// Memory heap properties
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MemoryHeap {
     pub size: u64,
     pub flags: u32,
 }
 
 /// Queue family properties
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct QueueFamilyProperties {
     pub queue_flags: u32,
     pub queue_count: u32,
@@ -156,7 +155,7 @@ pub struct VulkanRenderPass {
 
 /// Vulkan framebuffer
 #[derive(Debug)]
-pub VulkanFramebuffer {
+pub struct VulkanFramebuffer {
     pub handle: u64,
     pub render_pass: u64,
     pub width: u32,
@@ -177,7 +176,7 @@ pub struct AttachmentDescription {
 }
 
 /// DirectX format to Vulkan format mapping
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DirectXFormat {
     Unknown,
     R8G8B8A8_UNorm,
@@ -187,12 +186,13 @@ pub enum DirectXFormat {
     D32_Float,
     D24_Unorm_S8_UInt,
     R32_Float,
+    R32G32B32_Float,
     R16G16B16A16_Float,
     R11G11B10_Float,
 }
 
 /// DirectX usage flags
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DirectXUsage {
     Default,
     Immutable,
@@ -280,7 +280,7 @@ pub struct BlendState {
     pub render_target_write_mask: u8,
     pub blend_enable: bool,
     pub src_blend: DirectXBlendMode,
-    dest_blend: DirectXBlendMode,
+    pub dest_blend: DirectXBlendMode,
     pub blend_op: u8,
     pub src_blend_alpha: DirectXBlendMode,
     pub dest_blend_alpha: DirectXBlendMode,
@@ -361,28 +361,27 @@ impl GraphicsTranslator {
         // For now, we'll create a mock instance
         Ok(VulkanInstance {
             handle: 0x12345678, // Mock handle
-            physical_devices: vec![
-                VulkanPhysicalDevice {
-                    handle: 0x87654321,
-                    properties: PhysicalDeviceProperties {
-                        vendor_id: 0x8086, // Intel
-                        device_id: 0x1234,
-                        device_type: 2, // Discrete GPU
-                        device_name: "Mock GPU".to_string(),
-                        driver_version: 0x1000,
-                        api_version: 0x400000, // Vulkan 1.0
-                    },
-                    memory_properties: PhysicalDeviceMemoryProperties {
-                        memory_types: vec![
-                            MemoryType {
-                                heap_index: 0,
-                                property_flags: 0x0001, // Device local
-                            },
-                            MemoryType {
-                                heap_index: 1,
-                                property_flags: 0x0006, // Host visible + Host coherent
-                            },
-                        ],
+            physical_devices: vec![VulkanPhysicalDevice {
+                handle: 0x87654321,
+                properties: PhysicalDeviceProperties {
+                    vendor_id: 0x8086, // Intel
+                    device_id: 0x1234,
+                    device_type: 2, // Discrete GPU
+                    device_name: "Mock GPU".to_string(),
+                    driver_version: 0x1000,
+                    api_version: 0x400000, // Vulkan 1.0
+                },
+                memory_properties: PhysicalDeviceMemoryProperties {
+                    memory_types: vec![
+                        MemoryType {
+                            heap_index: 0,
+                            property_flags: 0x0001, // Device local
+                        },
+                        MemoryType {
+                            heap_index: 1,
+                            property_flags: 0x0006, // Host visible + Host coherent
+                        },
+                    ],
                     heap_count: 2,
                     heaps: vec![
                         MemoryHeap {
@@ -409,7 +408,9 @@ impl GraphicsTranslator {
                         min_image_transfer_granularity: 1,
                     },
                 ],
-            }),
+            }],
+        })
+    }
 
     /// Selects physical device
     fn select_physical_device(&self, instance: &VulkanInstance) -> Result<VulkanPhysicalDevice, Box<dyn std::error::Error>> {
@@ -444,7 +445,7 @@ impl GraphicsTranslator {
 
     /// Creates a texture
     pub fn create_texture(&mut self, width: u32, height: u32, format: DirectXFormat, usage: DirectXUsage) -> Result<u32, Box<dyn std::error::Error>> {
-        let device = self.vulkan_device.as_ref().ok_or("Vulkan not initialized")?;
+        let _device = self.vulkan_device.as_ref().ok_or("Vulkan not initialized")?;
         
         // Map DirectX format to Vulkan format
         let vulkan_format = self.map_directx_to_vulkan_format(format);
@@ -474,7 +475,7 @@ impl GraphicsTranslator {
 
     /// Creates a buffer
     pub fn create_buffer(&mut self, size: u64, usage: DirectXUsage) -> Result<u32, Box<dyn std::error::Error>> {
-        let device = self.vulkan_device.as_ref().ok_or("Vulkan not initialized")?;
+        let _device = self.vulkan_device.as_ref().ok_or("Vulkan not initialized")?;
         
         // Create Vulkan buffer
         let buffer = self.create_vulkan_buffer(size, usage)?;
@@ -510,7 +511,7 @@ impl GraphicsTranslator {
 
     /// Creates a graphics pipeline
     pub fn create_graphics_pipeline(&mut self, state: &GraphicsPipelineState) -> Result<u32, Box<dyn std::error::Error>> {
-        let device = self.vulkan_device.as_ref().ok_or("Vulkan not initialized")?;
+        let _device = self.vulkan_device.as_ref().ok_or("Vulkan not initialized")?;
         
         // Create render pass
         let render_pass = self.create_render_pass(&state.render_target_formats, state.depth_stencil_format)?;
@@ -542,6 +543,7 @@ impl GraphicsTranslator {
             DirectXFormat::D32_Float => 126, // VK_FORMAT_D32_SFLOAT
             DirectXFormat::D24_Unorm_S8_UInt => 129, // VK_FORMAT_D24_UNORM_S8_UINT
             DirectXFormat::R32_Float => 100, // VK_FORMAT_R32_SFLOAT
+            DirectXFormat::R32G32B32_Float => 106, // VK_FORMAT_R32G32B32_SFLOAT
             DirectXFormat::R16G16B16A16_Float => 111, // VK_FORMAT_R16G16B16A16_SFLOAT
             DirectXFormat::R11G11B10_Float => 113, // VK_FORMAT_B10G11R11_UFLOAT_PACK32
             DirectXFormat::Unknown => 0,
@@ -564,6 +566,11 @@ impl GraphicsTranslator {
     fn create_vulkan_sampler(&self) -> Result<u64, Box<dyn std::error::Error>> {
         // In a real implementation, this would call vkCreateSampler
         Ok(0x30000001)
+    }
+
+    /// Creates a sampler
+    pub fn create_sampler(&self) -> Result<u64, Box<dyn std::error::Error>> {
+        self.create_vulkan_sampler()
     }
 
     /// Creates Vulkan buffer

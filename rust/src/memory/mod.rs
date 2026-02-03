@@ -165,6 +165,9 @@ pub struct MemoryManager {
     next_free_address: u32,
     total_memory: u32,
     used_memory: u32,
+    heap_base: u32,
+    heap_size: u32,
+    heap_cursor: u32,
 }
 
 impl MemoryManager {
@@ -176,6 +179,9 @@ impl MemoryManager {
             next_free_address: 0x10000000, // Start at 256MB
             total_memory: 0x80000000,      // 2GB virtual address space
             used_memory: 0,
+            heap_base: 0,
+            heap_size: 0,
+            heap_cursor: 0,
         };
 
         // Initialize standard memory regions
@@ -196,7 +202,12 @@ impl MemoryManager {
         self.allocate_region(0x7FFF0000, 0x00010000, MemoryProtection::read_write(), "stack".to_string())?;
         
         // Heap region (0x600000 - 0x7FFF0000)
-        self.allocate_region(0x00600000, 0x7FF10000, MemoryProtection::read_write(), "heap".to_string())?;
+        let heap_base = 0x00600000;
+        let heap_size = 0x7FF10000;
+        self.allocate_region(heap_base, heap_size, MemoryProtection::read_write(), "heap".to_string())?;
+        self.heap_base = heap_base;
+        self.heap_size = heap_size;
+        self.heap_cursor = heap_base;
 
         Ok(())
     }
@@ -235,8 +246,20 @@ impl MemoryManager {
 
     /// Allocates memory automatically
     pub fn allocate(&mut self, size: u32, protection: MemoryProtection) -> Result<u32, Box<dyn std::error::Error>> {
-        let address = self.find_free_region(size)?;
-        self.allocate_at(address, size, protection)?;
+        let aligned_size = ((size + PAGE_SIZE - 1) / PAGE_SIZE) * PAGE_SIZE;
+
+        if self.heap_base != 0 {
+            let heap_end = self.heap_base + self.heap_size;
+            if self.heap_cursor + aligned_size <= heap_end {
+                let address = self.heap_cursor;
+                self.heap_cursor += aligned_size;
+                self.protect(address, aligned_size, protection)?;
+                return Ok(address);
+            }
+        }
+
+        let address = self.find_free_region(aligned_size)?;
+        self.allocate_at(address, aligned_size, protection)?;
         Ok(address)
     }
 
@@ -453,7 +476,13 @@ mod tests {
     fn test_memory_allocation() {
         let mut manager = MemoryManager::new().unwrap();
         let address = manager.allocate(0x1000, MemoryProtection::read_write()).unwrap();
-        assert!(address >= manager.next_free_address);
+        let heap_region = manager
+            .get_regions()
+            .iter()
+            .find(|region| region.name == "heap")
+            .expect("heap region should exist");
+        assert!(address >= heap_region.base_address);
+        assert!(address < heap_region.base_address + heap_region.size);
         
         // Write to allocated memory
         manager.write_u32(address, 0xdeadbeef).unwrap();
@@ -463,7 +492,7 @@ mod tests {
     #[test]
     fn test_memory_protection() {
         let mut manager = MemoryManager::new().unwrap();
-        let address = manager.allocate(0x1000, MemoryProtection::read_only()).unwrap();
+        let address = manager.allocate(0x1000, MemoryProtection::read_write()).unwrap();
         
         // Should be able to read
         manager.write_u32(address, 0x12345678).unwrap();
@@ -472,7 +501,7 @@ mod tests {
         // Change to read-only protection
         manager.protect(address, 0x1000, MemoryProtection::read_only()).unwrap();
         
-        // Writing should fail (but our implementation doesn't enforce this yet)
-        // This would need actual memory protection at the OS level
+        // Writing should now fail
+        assert!(manager.write_u32(address, 0x87654321).is_err());
     }
 }
