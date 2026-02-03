@@ -381,7 +381,7 @@ pub extern "system" fn Java_com_mobilepc_engine_EngineCore_stepExecution(
         let mut engine_guard = engine.lock().unwrap();
         
         // Execute one instruction
-        match engine_guard.run() {
+        match engine_guard.step() {
             Ok(_) => true,
             Err(e) => {
                 eprintln!("Execution step failed: {}", e);

@@ -31,7 +31,21 @@ SteamMobile is a sophisticated emulation platform that enables running PC games 
    - File I/O, memory management, and registry emulation
    - Thread and process management
 
-6. **Android Integration** (`rust/src/ffi/`)
+6. **Runtime Orchestration** (`rust/src/runtime/`)
+   - Frame-by-frame execution budget control
+   - Thermal-aware performance governance
+   - Unified input and graphics coordination
+
+7. **Input System** (`rust/src/input/`)
+   - Touch overlay mapping
+   - Controller bindings and axis mapping
+   - Unified input action queue
+
+8. **Power & Thermal Management** (`rust/src/power/`)
+   - Thermal policy thresholds and FPS recommendations
+   - Frame pacing and throttling
+
+9. **Android Integration** (`rust/src/ffi/`)
    - JNI bindings for native Android integration
    - Performance monitoring and debugging interfaces
    - Resource management and lifecycle control
@@ -69,10 +83,11 @@ The Android application (`app/`) provides:
 - **System Call Emulation**: Core Windows API functions (Kernel32, User32)
 - **Android JNI Integration**: Full native bridge for Android apps
 - **CPU Emulation**: Complete x86 register set and instruction execution
+- **Input Overlay System**: Touch and controller mapping with action queue
+- **Thermal Governance**: Thermal policy + frame pacing integration
 
 ### 🚧 In Progress
 - **DirectX to Vulkan Translation**: Graphics pipeline translation layer
-- **Thermal Management**: Dynamic performance scaling based on device temperature
 - **Touch UI**: Mobile-optimized game interface
 
 ### 📋 Planned

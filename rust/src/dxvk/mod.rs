@@ -123,9 +123,9 @@ pub struct DXVKDepthStencilState {
 /// DXVK stencil operation description
 #[derive(Debug, Clone)]
 pub struct DXVKStencilOpDesc {
-    pub stencil_fail_op: u32,
-    pub stencil_depth_fail_op: u32,
-    pub stencil_pass_op: u32,
+    pub stencil_fail_op: crate::graphics::DirectXStencilOp,
+    pub stencil_depth_fail_op: crate::graphics::DirectXStencilOp,
+    pub stencil_pass_op: crate::graphics::DirectXStencilOp,
     pub stencil_func: DirectXComparison,
 }
 
@@ -231,7 +231,7 @@ impl DXVKTranslator {
 
     /// Creates a sampler
     pub fn create_sampler(&mut self, filter: u32, address_u: u32, address_v: u32, address_w: u32, max_anisotropy: f32) -> Result<u32, Box<dyn std::error::Error>> {
-        let vulkan_id = self.graphics_translator.create_vulkan_sampler()?;
+        let vulkan_id = self.graphics_translator.create_sampler()? as u32;
         
         let sampler_id = self.sampler_map.len() as u32 + 1;
         self.sampler_map.insert(sampler_id, DXVKSampler {
@@ -303,7 +303,9 @@ impl DXVKTranslator {
     pub fn set_scissor_rects(&mut self, scissor_rects: &[DXVKScissorRect]) -> Result<(), Box<dyn std::error::Error>> {
         self.current_state.scissor_rects = scissor_rects.to_vec();
         for rect in scissor_rects {
-            self.graphics_translator.set_scissor_rect(rect.left, rect.top, rect.right, rect.bottom)?;
+            let width = (rect.right - rect.left).max(0) as u32;
+            let height = (rect.bottom - rect.top).max(0) as u32;
+            self.graphics_translator.set_scissor_rect(rect.left, rect.top, width, height)?;
         }
         Ok(())
     }
@@ -312,11 +314,11 @@ impl DXVKTranslator {
     pub fn create_graphics_pipeline(&mut self) -> Result<u32, Box<dyn std::error::Error>> {
         // Convert current state to graphics pipeline state
         let pipeline_state = self.convert_state_to_pipeline_state();
-        
+        let cached_state = self.snapshot_pipeline_state();
         let vulkan_id = self.graphics_translator.create_graphics_pipeline(&pipeline_state)?;
         
         let pipeline_id = self.pipeline_state_cache.len() as u64 + 1;
-        self.pipeline_state_cache.insert(pipeline_id, pipeline_state);
+        self.pipeline_state_cache.insert(pipeline_id, cached_state);
         
         Ok(pipeline_id as u32)
     }
@@ -385,6 +387,18 @@ impl DXVKTranslator {
         }
     }
 
+    fn snapshot_pipeline_state(&self) -> DXVKPipelineState {
+        DXVKPipelineState {
+            input_layout: self.current_state.input_layout.clone(),
+            blend_state: self.current_state.blend_state.clone(),
+            rasterizer_state: self.current_state.rasterizer_state.clone(),
+            depth_stencil_state: self.current_state.depth_stencil_state.clone(),
+            render_target_formats: self.current_state.render_target_formats.clone(),
+            depth_stencil_format: self.current_state.depth_stencil_format,
+            primitive_topology: self.current_state.primitive_topology,
+        }
+    }
+
     /// Binds graphics pipeline
     pub fn bind_graphics_pipeline(&mut self, pipeline_id: u32) -> Result<(), Box<dyn std::error::Error>> {
         let pipeline_key = pipeline_id as u64;
@@ -395,7 +409,7 @@ impl DXVKTranslator {
     }
 
     /// Binds vertex buffer
-    pub fn bind_vertex_buffer(&mut self, buffer_id: u32, offset: u64, stride: u32) -> Result<(), Box<dyn std:: error::Error>> {
+    pub fn bind_vertex_buffer(&mut self, buffer_id: u32, offset: u64, stride: u32) -> Result<(), Box<dyn std::error::Error>> {
         // In a real implementation, this would bind the vertex buffer
         eprintln!("Binding vertex buffer {} at offset {}, stride {}", buffer_id, offset, stride);
         Ok(())
@@ -565,15 +579,15 @@ impl Default for DXVKDepthStencilState {
             stencil_read_mask: 0xFF,
             stencil_write_mask: 0xFF,
             front_face: DXVKStencilOpDesc {
-                stencil_fail_op: 1, // KEEP
-                stencil_depth_fail_op: 1, // KEEP
-                stencil_pass_op: 1, // KEEP
+                stencil_fail_op: crate::graphics::DirectXStencilOp::Keep,
+                stencil_depth_fail_op: crate::graphics::DirectXStencilOp::Keep,
+                stencil_pass_op: crate::graphics::DirectXStencilOp::Keep,
                 stencil_func: DirectXComparison::Always,
             },
             back_face: DXVKStencilOpDesc {
-                stencil_fail_op: 1, // KEEP
-                stencil_depth_fail_op: 1, // KEEP
-                stencil_pass_op: 1, // KEEP
+                stencil_fail_op: crate::graphics::DirectXStencilOp::Keep,
+                stencil_depth_fail_op: crate::graphics::DirectXStencilOp::Keep,
+                stencil_pass_op: crate::graphics::DirectXStencilOp::Keep,
                 stencil_func: DirectXComparison::Always,
             },
         }
@@ -593,6 +607,7 @@ mod tests {
     #[test]
     fn test_texture_creation() {
         let mut translator = DXVKTranslator::new().unwrap();
+        translator.initialize().unwrap();
         let texture_id = translator.create_texture(256, 256, DirectXFormat::R8G8B8A8_UNorm, DirectXUsage::Default).unwrap();
         assert!(texture_id > 0);
         
@@ -605,6 +620,7 @@ mod tests {
     #[test]
     fn test_buffer_creation() {
         let mut translator = DXVKTranslator::new().unwrap();
+        translator.initialize().unwrap();
         let buffer_id = translator.create_buffer(1024, DirectXUsage::Default).unwrap();
         assert!(buffer_id > 0);
         
@@ -616,6 +632,7 @@ mod tests {
     #[test]
     fn test_pipeline_creation() {
         let mut translator = DXVKTranslator::new().unwrap();
+        translator.initialize().unwrap();
         
         // Set up input layout
         let input_layout = vec![
